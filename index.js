@@ -16,6 +16,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { isAbsolute, join, basename } from 'node:path'
 import { homedir } from 'node:os'
+import { registerBoardCommand } from './lib/command.js'
 
 export const name = 'dsh-task-board'
 
@@ -30,6 +31,11 @@ const DEFAULTS = {
   filePattern: '^_任务卡-.+\\.md$',
   /** stale 的天数线。 */
   staleDays: 3,
+  /** 新会话开场注入（一次性、便宜数据——一趟卡目录同步扫描）：autoInject=false 关闭；
+   *  autoInjectChars=注入文本预算（超长截断加 …）；autoInjectOrder=段落在系统提示里的排序。 */
+  autoInject: true,
+  autoInjectChars: 600,
+  autoInjectOrder: 900,
 }
 
 /**
@@ -66,6 +72,9 @@ export const Config = z
       cardsDir: z.string().default(DEFAULTS.cardsDir),
       filePattern: z.string().default(DEFAULTS.filePattern),
       staleDays: z.number().default(DEFAULTS.staleDays),
+      autoInject: z.boolean().default(DEFAULTS.autoInject),
+      autoInjectChars: z.number().default(DEFAULTS.autoInjectChars),
+      autoInjectOrder: z.number().default(DEFAULTS.autoInjectOrder),
     })
   : undefined
 
@@ -350,77 +359,203 @@ function cardTemplate(cfg) {
   ].join('\n')
 }
 
+/** 工具与 /board 命令共用的同一条实现路径（one operation, two callers）。
+ *  返回 { report, isError }：isError=true 的 report 是引导/错误文本，
+ *  命令层据此转 kind:'error'；工具层忽略它、照旧把文本当 report 返回。 */
+export function runBoard(cfg, what, name) {
+  what = String(what ?? 'list')
+  if (what === 'template') return { report: cardTemplate(cfg), isError: false }
+  const { dir, tried } = resolveCardsDir(cfg)
+  if (!dir) {
+    return {
+      report: `卡目录不存在。试过：${tried.join(' ; ')}。改 Config cardsDir / workspaceRoot（卡骨架模板：what=template）。`,
+      isError: true,
+    }
+  }
+  let cards
+  try {
+    cards = listCards(dir, cfg)
+  } catch (e) {
+    if (e?.code === 'EBADFILEPATTERN') {
+      return { report: `${e.message}。Config.filePattern 例：^_任务卡-.+\\.md$`, isError: true }
+    }
+    return { report: `扫卡目录失败：${e?.message ?? e}`, isError: true }
+  }
+  if (what === 'detail') {
+    const { card, error } = findCard(cards, name)
+    if (error) return { report: error, isError: true }
+    return { report: capBytes(renderDetail(card, cfg)), isError: false }
+  }
+  if (what === 'stale') {
+    const days = Number(cfg.staleDays) > 0 ? Number(cfg.staleDays) : DEFAULTS.staleDays
+    return { report: capBytes(renderStale(cards, days)), isError: false }
+  }
+  return { report: capBytes(renderList(cards)), isError: false }
+}
+
 export const _internals = {
   charWidth, displayWidth, padEndW, capBytes, resolveCardsDir,
   sectionOf, firstMdPath, resolveReport, statusLineOf, goalOf, uncheckedOf,
   readCard, listCards, renderList, renderDetail, renderStale, findCard, fmtTime, cardTemplate,
 }
 
+/* ───────────────────────── 开场注入与常驻提示 ───────────────────────── */
+
+/** 新会话开场注入的便宜快照：卡目录一趟同步扫描（<1s、不起子进程），只数卡与状态分布。
+ *  磁盘 / 端口归 env-doctor 的注入段——跨包不重复实现同一逻辑。 */
+function buildStartupSnapshot(cfg) {
+  try {
+    const { dir } = resolveCardsDir(cfg)
+    if (!dir) return ''
+    const cards = listCards(dir, cfg)
+    if (!cards.length) return ''
+    let notStarted = 0, running = 0, done = 0, stuck = 0
+    for (const c of cards) {
+      const st = String(c.status ?? '')
+      if (/卡住|阻塞|block/i.test(st)) stuck += 1
+      else if (/做完|完成|待核对|done|merged/i.test(st)) done += 1
+      else if (/未开工/.test(st)) notStarted += 1
+      else running += 1
+    }
+    return [
+      `【任务看板】共 ${cards.length} 张卡：未开工 ${notStarted} · 在跑 ${running} · 做完 ${done} · 卡住 ${stuck}`,
+      '要端口明细打 /env，要看板打 /board。',
+    ].join('\n')
+  } catch { /* 组装期任何异常都返回空，绝不让注入毁掉请求 */ }
+  return ''
+}
+
+/** 监听 agent/created、agent/disposed：每个新会话注入一次看板快照（返回非空文本才记
+ *  「给过」，卡目录没就绪时留着下次再试）。注册到 agent.ctx 的 effect 自己另存
+ *  disposer（键 sessionId）——别人 dispose agent.ctx 不代表这张表干净了。 */
+function watchAgentsForInjection(root, { cfg, log, buildSnapshot }) {
+  if (typeof root.on !== 'function') { log('宿主 ctx 没有 .on，跳过开场注入监听'); return null }
+  const injected = new Set()
+  const perSession = new Map()
+  const offCreated = root.on('agent/created', (payload) => {
+    try {
+      const agent = payload?.agent
+      const sid = String(agent?.id ?? '')
+      if (!sid || typeof agent?.ctx?.effect !== 'function') return
+      const dispose = agent.ctx.effect(() => agent.ctx.systemPrompt.context({
+        name: 'task-board:snapshot',
+        order: cfg.autoInjectOrder,
+        interpolate: false,
+        text: () => {
+          try {
+            if (!cfg.autoInject || injected.has(sid)) return ''
+            let text = buildSnapshot()
+            if (!text) return ''
+            if (text.length > cfg.autoInjectChars) text = `${text.slice(0, cfg.autoInjectChars)}…`
+            injected.add(sid)
+            log(`auto-inject session=${sid} chars=${text.length}`)
+            return text
+          } catch (e) {
+            log(`注入渲染失败：${e?.message ?? e}`)
+            return ''
+          }
+        },
+      }), `task-board.inject.${sid}`)
+      if (typeof dispose === 'function') perSession.set(sid, dispose)
+    } catch (e) { log(`agent/created 处理失败：${e?.message ?? e}`) }
+  })
+  const offDisposed = root.on('agent/disposed', (payload) => {
+    try {
+      const sid = String(payload?.agent?.id ?? '')
+      perSession.get(sid)?.()
+      perSession.delete(sid)
+      injected.delete(sid)
+    } catch { /* 清理失败不影响主流程 */ }
+  })
+  return () => {
+    try { if (typeof offCreated === 'function') offCreated() } catch { /* 忽略 */ }
+    try { if (typeof offDisposed === 'function') offDisposed() } catch { /* 忽略 */ }
+    for (const d of perSession.values()) { try { d?.() } catch { /* 忽略 */ } }
+    perSession.clear()
+    injected.clear()
+  }
+}
+
+/** 常驻提示：告诉模型什么时候主动调 task_board（每轮都在，区别于一次性注入）。
+ *  env-doctor 已注册覆盖两个工具的完整提示段；本段只保留 task_board 自己的行，
+ *  单独安装本插件时提示依然成立。systemPrompt.section() 参数未实测，按任务卡
+ *  §2.3 的指示退回已验证的 context() 形式。 */
+function registerToolHintsPrompt(root, { cfg, log }) {
+  try {
+    const sp = root.systemPrompt
+    if (!sp || typeof sp.context !== 'function') { log('宿主没有 systemPrompt.context，跳过常驻提示'); return null }
+    const fixed = [
+      '【任务看板工具】task_board 只读、无副作用，随时可调：',
+      '- 话题里出现 卡/任务/待办/进度/哪张没做完/谁卡住 → 先调 task_board，别凭印象说',
+      '- 用户只是聊天、打招呼、问概念 → 不要调',
+      '- 一次回答里同一工具最多调一次，结论要带上实测数字',
+      '用户也可以直接打 /board 自己看，不经过你。',
+    ].join('\n')
+    const dispose = sp.context({
+      name: 'task-board:tool-hints',
+      order: cfg.autoInjectOrder + 10,
+      interpolate: false,
+      text: () => fixed,
+    })
+    return typeof dispose === 'function' ? dispose : null
+  } catch (e) { log(`常驻提示注册失败：${e?.message ?? e}`); return null }
+}
+
 /* ───────────────────────── 插件入口 ───────────────────────── */
 
 export function apply(ctx, config = {}) {
   const cfg = { ...DEFAULTS, ...(config || {}) }
-
-  ctx.inject(['tools'], (ctx) => {
-    ctx.tools.register({
-      name: 'task_board',
-      description:
-        '看工作区任务卡看板：哪张没开工、哪张在跑、哪张做完、哪张卡住。'
-        + 'what=list（默认）全量一张表；what=detail 传 name 看单张卡的目标、状态、报告开头和没打勾的验收项；'
-        + 'what=stale 列超过 staleDays 天没动、又没报告的卡（「写完了没人跑」）；'
-        + 'what=template 输出一张可直接落盘的卡骨架（空看板时从这里开始）。只读，不改卡。',
-      parameters: {
-        type: 'object',
-        properties: {
-          what: {
-            type: 'string',
-            enum: ['list', 'detail', 'stale', 'template'],
-            description: '看板动作，默认 list。',
+  const disposers = []
+  const log = (m) => { try { console.log(`[task-board] ${m}`) } catch { /* 日志失败不影响功能 */ } }
+  try {
+    ctx.inject(['tools'], (inner) => {
+      try {
+        inner.tools.register({
+          name: 'task_board',
+          description:
+            '看工作区任务卡看板：哪张没开工、哪张在跑、哪张做完、哪张卡住。'
+            + 'what=list（默认）全量一张表；what=detail 传 name 看单张卡的目标、状态、报告开头和没打勾的验收项；'
+            + 'what=stale 列超过 staleDays 天没动、又没报告的卡（「写完了没人跑」）；'
+            + 'what=template 输出一张可直接落盘的卡骨架（空看板时从这里开始）。只读，不改卡。',
+          parameters: {
+            type: 'object',
+            properties: {
+              what: {
+                type: 'string',
+                enum: ['list', 'detail', 'stale', 'template'],
+                description: '看板动作，默认 list。',
+              },
+              name: {
+                type: 'string',
+                description: 'what=detail 时要看的卡名（文件名去掉 _任务卡- 前缀和 .md 后缀）。',
+              },
+            },
+            required: [],
           },
-          name: {
-            type: 'string',
-            description: 'what=detail 时要看的卡名（文件名去掉 _任务卡- 前缀和 .md 后缀）。',
+          output: {
+            schema: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['report'],
+              properties: { report: { type: 'string' } },
+            },
+            render: (_args, value) => [{ type: 'text', text: String(value?.report ?? '') }],
           },
-        },
-        required: [],
-      },
-      output: {
-        schema: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['report'],
-          properties: { report: { type: 'string' } },
-        },
-        render: (_args, value) => [{ type: 'text', text: String(value?.report ?? '') }],
-      },
-      execute: async (args) => {
-        const what = String(args?.what ?? 'list')
-        if (what === 'template') return { report: cardTemplate(cfg) }
-        const { dir, tried } = resolveCardsDir(cfg)
-        if (!dir) {
-          return { report: `卡目录不存在。试过：${tried.join(' ; ')}。改 Config cardsDir / workspaceRoot（卡骨架模板：what=template）。` }
-        }
-        let cards
-        try {
-          cards = listCards(dir, cfg)
-        } catch (e) {
-          if (e?.code === 'EBADFILEPATTERN') {
-            return { report: `${e.message}。Config.filePattern 例：^_任务卡-.+\\.md$` }
-          }
-          return { report: `扫卡目录失败：${e?.message ?? e}` }
-        }
-
-        if (what === 'detail') {
-          const { card, error } = findCard(cards, args?.name)
-          if (error) return { report: error }
-          return { report: capBytes(renderDetail(card, cfg)) }
-        }
-        if (what === 'stale') {
-          const days = Number(cfg.staleDays) > 0 ? Number(cfg.staleDays) : DEFAULTS.staleDays
-          return { report: capBytes(renderStale(cards, days)) }
-        }
-        return { report: capBytes(renderList(cards)) }
-      },
+          // 与 /board 命令共用 runBoard（one operation, two callers）；isError 只给命令层用
+          execute: async (args) => {
+            const r = runBoard(cfg, String(args?.what ?? 'list'), args?.name)
+            return { report: r.report }
+          },
+        })
+      } catch (e) { log(`工具注册失败：${e?.message ?? e}`) }
     })
-  })
+    const cmd = registerBoardCommand(ctx, { runBoard: (what, name) => runBoard(cfg, what, name), log })
+    if (cmd) disposers.push(cmd)
+    else log('没注册命令：宿主没有 commands 服务')
+    const watch = watchAgentsForInjection(ctx, { cfg, log, buildSnapshot: () => buildStartupSnapshot(cfg) })
+    if (watch) disposers.push(watch)
+    const hints = registerToolHintsPrompt(ctx, { cfg, log })
+    if (hints) disposers.push(hints)
+  } catch (e) { log(`apply 失败（已吞掉，功能可能不全）：${e?.message ?? e}`) }
+  return () => { for (const d of disposers.reverse()) { try { d?.() } catch { /* 忽略 */ } } }
 }

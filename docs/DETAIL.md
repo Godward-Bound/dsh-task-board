@@ -41,6 +41,15 @@
 | `cardsDir` | `tasks` | 卡目录，相对 `workspaceRoot`（绝对路径也认） |
 | `filePattern` | `^_任务卡-.+\.md$` | 卡文件名过滤正则（字符串，不带首尾斜杠） |
 | `staleDays` | `3` | stale 的天数线 |
+| `autoInject` | `true` | 新会话开场注入开关 |
+| `autoInjectChars` | 600 | 注入文本预算（超长截断加 `…`） |
+| `autoInjectOrder` | 900 | 注入段在系统提示里的排序 |
+
+## 斜杠命令与开场注入
+
+- `/board [list|stale|detail|template] [卡名]`：宿主侧直接执行 `task_board` 的**同一条实现路径**（`runBoard`，工具与命令共用），结果不进模型历史、不烧 token。detail 缺卡名、卡不存在都会给 error 文本而不是抛异常。headless / 老宿主没有 commands 服务时自动跳过（日志一行），工具不受影响。
+- **新会话开场注入**（默认开，`autoInject=false` 关）：每个新会话第一轮注入一段看板快照——卡总数与 未开工 / 在跑 / 做完 / 卡住 分布（按状态行关键字 + 推断归类）。卡目录没就绪就留到下次再注入；磁盘与端口由 env-doctor 的注入段负责（跨包不重复实现同一逻辑）。每次成功注入在日志留 `auto-inject session=<id> chars=<n>`。
+- **常驻提示**：`systemPrompt.context` 注册 task_board 自己的触发词段（env-doctor 已注册覆盖两个工具的完整版本，单独安装本插件时本段依然成立）。
 
 ## 实现边界
 
