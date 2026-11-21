@@ -28,6 +28,8 @@ DSH 插件（Host-only，无界面）：注册一个只读工具 `task_board`。
 dsh plugin --profile desktop add github:Godward-Bound/dsh-task-board
 ```
 
+> 桌面版没有 `dsh` 命令时，也可以走 DSH 的 **Settings → Plugins** 搜索安装，或让 agent 调 `plugin_manager install_bundle`，target 传本仓库地址。
+
 > `desktop` 换成你的 profile 名。
 
 ## 📋 用法
