@@ -1,0 +1,44 @@
+{
+    "name":  "dsh-task-board",
+    "version":  "0.1.0",
+    "private":  true,
+    "type":  "module",
+    "exports":  {
+                    ".":  "./index.js",
+                    "./locale/*.json":  "./locale/*.json"
+                },
+    "dsh":  {
+                "bundle":  {
+                               "patch":  "./cordis.patch.yml"
+                           }
+            },
+    "license":  "MIT",
+    "description":  "Task board for DSH: one call lists every task card in the workspace - which never started, which is running, which finished, which is stuck. Read-only, zero dependencies.",
+    "repository":  {
+                       "type":  "git",
+                       "url":  "git+https://github.com/Godward-Bound/dsh-task-board.git"
+                   },
+    "homepage":  "https://github.com/Godward-Bound/dsh-task-board#readme",
+    "keywords":  [
+                     "dsh-plugin",
+                     "deepseek-harness",
+                     "task-board",
+                     "kanban",
+                     "markdown"
+                 ],
+    "engines":  {
+                    "node":  ">=18"
+                },
+    "files":  [
+                  "index.js",
+                  "cordis.patch.yml",
+                  "locale/*.json",
+                  "docs",
+                  "icon.svg",
+                  "README.md",
+                  "LICENSE"
+              ],
+    "os":  [
+               "win32"
+           ]
+}

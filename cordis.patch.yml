@@ -1,0 +1,14 @@
+# dsh-task-board bundle patch —— 任务卡看板
+#
+# 只读工具 task_board：list（全量表）/ detail（单卡详情）/ stale（过期没跑的卡）/
+# template（输出一张可直接落盘的卡骨架）。
+# 状态判定：卡里 `> 状态：` 行优先（事实）；没有就看报告文件在不在（推断，渲染加 ?）；
+# 都没有就是 未开工（推断）。卡与报告都不改。
+#
+# config 保持通用最小集：workspaceRoot / cardsDir 不写死任何路径——留空即
+# 「跟随当前工作区」；staleDays 是唯一值得显式写出的默认值。
+- insert:
+    - id: task-board
+      name: 'dsh-task-board'
+      config:
+        staleDays: 3

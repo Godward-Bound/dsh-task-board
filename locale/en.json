@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Task board",
+    "description": "List all task cards in the workspace in one call: which never started, which ran, which finished, which is stuck. detail shows one card's goal, report head and unchecked acceptance items; stale lists cards left untouched with no report.",
+    "detail": "docs/DETAIL.md"
+  }
+}
