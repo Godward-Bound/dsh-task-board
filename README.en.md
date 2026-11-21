@@ -5,10 +5,10 @@
 **One agent call turns a folder of markdown task cards into a status board —**
 **which never started, which is running, which finished, which is stuck.**
 
-[![Platform](https://img.shields.io/badge/platform-cross--platform-0078d4)](#-usage)
+[![Platform](https://img.shields.io/badge/platform-cross--platform-0078d4)](https://github.com/Godward-Bound/dsh-task-board)
 [![License](https://img.shields.io/badge/license-MIT-3fb950)](LICENSE)
-[![Dependencies](https://img.shields.io/badge/dependencies-zero-3fb950)](#%EF%B8%8F-configuration)
-[![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A518-8a63d2)](#)
+[![Dependencies](https://img.shields.io/badge/dependencies-zero-3fb950)](https://github.com/Godward-Bound/dsh-task-board)
+[![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A518-8a63d2)](https://nodejs.org)
 
 [简体中文](README.md) · **English**
 
@@ -35,7 +35,7 @@ dsh plugin --profile desktop add github:Godward-Bound/dsh-task-board
 ## 📋 Usage
 
 | Call | What you get |
-|---|---|
+|:--|:--|
 | `task_board(what=list)` *(default)* | One table of every card, most recently changed first, plus a summary line |
 | `task_board(what=detail, name=…)` | One card: goal, status, first 20 lines of its report, unchecked acceptance items |
 | `task_board(what=stale)` | Cards untouched for `staleDays` with no report — the "written, never run" pile |
@@ -74,7 +74,7 @@ saved into a card file as-is.
 ## ⚙️ Configuration
 
 | Key | Default | What it does |
-|---|:--|---|
+|:--|:--|:--|
 | `workspaceRoot` | empty = follow the current workspace (cwd) | Anchor for resolving a relative `cardsDir` |
 | `cardsDir` | `tasks` | Cards folder (relative to `workspaceRoot`; absolute paths work too) |
 | `filePattern` | `^_任务卡-.+\.md$` | Filename filter regex (string form, no surrounding slashes) |
