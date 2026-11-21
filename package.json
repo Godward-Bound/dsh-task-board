@@ -37,8 +37,5 @@
                   "icon.svg",
                   "README.md",
                   "LICENSE"
-              ],
-    "os":  [
-               "win32"
-           ]
+              ]
 }
