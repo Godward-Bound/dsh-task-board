@@ -45,6 +45,32 @@ dsh plugin --profile desktop add github:Godward-Bound/dsh-task-board
 | `task_board(what=stale)` | Cards untouched for `staleDays` with no report — the "written, never run" pile |
 | `task_board(what=template)` | A ready-to-save card skeleton — start here when the board is empty |
 
+## ⌨️ Slash commands
+
+Executed host-side — **no model messages, no tokens burned**:
+
+| Command | What it does |
+|---|---|
+| `/board [list\|stale\|detail\|template] [card]` | Runs `task_board`, defaults to `list` |
+
+> On headless hosts without a `commands` service the command is skipped quietly —
+> the `task_board` tool itself is unaffected.
+
+## 🌅 Session-start injection
+
+Each new session's first request gets a **board snapshot** injected once (never repeated in
+the same session): total cards and the not-started / running / done / stuck breakdown
+(classified from status lines + inference). If the cards folder isn't ready yet, the
+injection is deferred to a later turn. Disk and ports come from env-doctor's own injection.
+
+| Key | Default | What it does |
+|---|---|---|
+| `autoInject` | `true` | Turn the session-start injection off |
+| `autoInjectChars` | `600` | Budget for the injected text (truncated with `…`) |
+| `autoInjectOrder` | `900` | Ordering of the injected section |
+
+Every successful injection logs `auto-inject session=<id> chars=<n>`.
+
 ## 🖥 Example output
 
 Real `task_board(what=list)` output (labels and card names are Chinese — this is the
@@ -83,6 +109,9 @@ saved into a card file as-is.
 | `cardsDir` | `tasks` | Cards folder (relative to `workspaceRoot`; absolute paths work too) |
 | `filePattern` | `^_任务卡-.+\.md$` | Filename filter regex (string form, no surrounding slashes) |
 | `staleDays` | `3` | Threshold for the `stale` view |
+| `autoInject` | `true` | Session-start injection switch |
+| `autoInjectChars` | `600` | Injected-text budget (truncated) |
+| `autoInjectOrder` | `900` | Ordering of the injected section |
 
 Missing cards folder? You get the list of paths it tried plus how to fix the config —
 never a stack trace. An invalid `filePattern` regex gets the same treatment.

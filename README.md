@@ -45,6 +45,28 @@ dsh plugin --profile desktop add github:Godward-Bound/dsh-task-board
 | `task_board(what=stale)` | 超过 `staleDays` 天没动、又没报告的卡——「写完了没人跑」那堆 |
 | `task_board(what=template)` | 一张可直接落盘的卡骨架——空看板从这里开始 |
 
+## ⌨️ 斜杠命令
+
+宿主侧直接执行，**不产生模型消息、不烧 token**：
+
+| 命令 | 作用 |
+|---|---|
+| `/board [list\|stale\|detail\|template] [卡名]` | 跑一遍 `task_board`，默认 `list` |
+
+> headless / 老宿主没有 commands 服务时会自动跳过，`task_board` 工具本身不受影响。
+
+## 🌅 新会话自动注入
+
+每个新会话的第一轮请求会自动注入一段**看板快照**（一次性，之后不再重复）：卡总数与未开工 / 在跑 / 做完 / 卡住分布（按状态行 + 推断归类）。卡目录没就绪时会留到下次再注入。磁盘与端口由 env-doctor 的注入段负责。
+
+| 键 | 默认 | 作用 |
+|---|---|---|
+| `autoInject` | `true` | 关掉后新会话不再注入 |
+| `autoInjectChars` | `600` | 注入文本预算，超长截断加 `…` |
+| `autoInjectOrder` | `900` | 注入段在系统提示里的排序 |
+
+每次成功注入都会在日志里留一行 `auto-inject session=<id> chars=<n>`。
+
 ## 🖥 输出示例
 
 `task_board(what=list)` 的真实格式（卡名做了替换）：
@@ -78,6 +100,9 @@ dsh plugin --profile desktop add github:Godward-Bound/dsh-task-board
 | `cardsDir` | `tasks` | 卡目录（相对 `workspaceRoot`，绝对路径也认） |
 | `filePattern` | `^_任务卡-.+\.md$` | 文件名过滤正则（字符串形式，不带首尾斜杠） |
 | `staleDays` | `3` | `stale` 的天数线 |
+| `autoInject` | `true` | 新会话开场注入开关 |
+| `autoInjectChars` | `600` | 注入文本预算（超长截断） |
+| `autoInjectOrder` | `900` | 注入段在系统提示里的排序 |
 
 卡目录不存在时，返回「试过哪些路径 + 怎么改 config」的引导，不抛异常；`filePattern` 不是合法正则也一样。
 
