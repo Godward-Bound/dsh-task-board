@@ -32,6 +32,8 @@ dsh plugin --profile desktop add github:Godward-Bound/dsh-task-board
 
 > If your desktop app has no `dsh` CLI, install from DSH's **Settings → Plugins** (search for it), or have the agent call `plugin_manager install_bundle` with this repo's URL as the target.
 
+> To pin a version, use `github:Godward-Bound/dsh-task-board#<commit-sha>`. The official publishing docs recommend pinning a commit so later upstream pushes can't silently change what actually runs.
+
 > Replace `desktop` with your profile name.
 
 ## 📋 Usage

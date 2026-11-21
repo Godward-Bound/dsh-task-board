@@ -30,6 +30,8 @@ dsh plugin --profile desktop add github:Godward-Bound/dsh-task-board
 
 > 桌面版没有 `dsh` 命令时，也可以走 DSH 的 **Settings → Plugins** 搜索安装，或让 agent 调 `plugin_manager install_bundle`，target 传本仓库地址。
 
+> 想锁定版本就用 `github:Godward-Bound/dsh-task-board#<commit-sha>`。官方发布文档建议锁 commit，避免上游后续推送悄悄改变实际运行内容。
+
 > `desktop` 换成你的 profile 名。
 
 ## 📋 用法
